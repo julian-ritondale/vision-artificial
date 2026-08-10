@@ -17,6 +17,12 @@ RIGHT_CORNERS = (362, 263)
 RIGHT_TOP = (386, 385)
 RIGHT_BOTTOM = (373, 380)
 
+MIN_EYE_ASPECT_RATIO = 0.15
+MIN_HORIZONTAL_RATIO = 0.35
+MAX_HORIZONTAL_RATIO = 0.65
+MIN_VERTICAL_OFFSET = -0.10
+MAX_VERTICAL_OFFSET = 0
+
 cap = cv2.VideoCapture(0)
 
 while cap.isOpened():
@@ -50,7 +56,7 @@ while cap.isOpened():
         right_ear = right_height / right_width
         avg_ear = (left_ear + right_ear) / 2
 
-        if avg_ear > 0.15:
+        if avg_ear > MIN_EYE_ASPECT_RATIO:
             left_x_ratio = np.linalg.norm(pt(LEFT_IRIS) - pt(LEFT_CORNERS[0])) / left_width
             right_x_ratio = np.linalg.norm(pt(RIGHT_IRIS) - pt(RIGHT_CORNERS[0])) / right_width
 
@@ -60,8 +66,14 @@ while cap.isOpened():
             right_center_y = (pt(RIGHT_CORNERS[0])[1] + pt(RIGHT_CORNERS[1])[1]) / 2
             right_y_offset = (pt(RIGHT_IRIS)[1] - right_center_y) / right_width
 
-            horizontal_ok = (0.35 < left_x_ratio < 0.65) and (0.35 < right_x_ratio < 0.65)
-            vertical_ok = (-0.10 < left_y_offset < 0) and (-0.10 < right_y_offset < 0)
+            horizontal_ok = (
+                MIN_HORIZONTAL_RATIO < left_x_ratio < MAX_HORIZONTAL_RATIO
+                and MIN_HORIZONTAL_RATIO < right_x_ratio < MAX_HORIZONTAL_RATIO
+            )
+            vertical_ok = (
+                MIN_VERTICAL_OFFSET < left_y_offset < MAX_VERTICAL_OFFSET
+                and MIN_VERTICAL_OFFSET < right_y_offset < MAX_VERTICAL_OFFSET
+            )
 
             if horizontal_ok and vertical_ok:
                 looking_away = False
