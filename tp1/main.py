@@ -1,6 +1,15 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import platform
+from pathlib import Path
+import subprocess
+
+video_path = Path(__file__).with_name("alert.mp4")
+audio_path = Path(__file__).with_name("alert.wav")
+video_cap = cv2.VideoCapture(str(video_path))
+video_playing = False
+audio_process = None
 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True, max_num_faces=1)
@@ -24,6 +33,51 @@ MIN_VERTICAL_OFFSET = -0.10
 MAX_VERTICAL_OFFSET = 0
 
 cap = cv2.VideoCapture(0)
+
+cv2.namedWindow("Gaze Tracker", cv2.WINDOW_NORMAL)
+
+
+def start_alert_audio():
+    global audio_process
+    stop_alert_audio()
+
+    system_name = platform.system()
+    if system_name == "Windows":
+        if audio_path.exists():
+            import winsound
+
+            winsound.PlaySound(str(audio_path), winsound.SND_ASYNC | winsound.SND_FILENAME)
+        return
+
+    if system_name == "Darwin":
+        audio_process = subprocess.Popen(["/usr/bin/afplay", str(audio_path if audio_path.exists() else video_path)])
+        return
+
+    if audio_path.exists():
+        audio_process = subprocess.Popen(["ffplay", "-nodisp", "-autoexit", str(audio_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def stop_alert_audio():
+    global audio_process
+    system_name = platform.system()
+
+    if system_name == "Windows":
+        try:
+            import winsound
+
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        except Exception:
+            pass
+        audio_process = None
+        return
+
+    if audio_process is not None and audio_process.poll() is None:
+        audio_process.terminate()
+        try:
+            audio_process.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            audio_process.kill()
+    audio_process = None
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -80,10 +134,33 @@ while cap.isOpened():
 
     if looking_away:
         cv2.putText(frame, "LOOK AT SCREEN", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        if not video_playing:
+            video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            video_playing = True
+            start_alert_audio()
 
-    cv2.imshow("Gaze Tracker", frame)
+        ret_video, video_frame = video_cap.read()
+        if ret_video:
+            display_frame = video_frame
+        else:
+            video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            video_playing = False
+            start_alert_audio()
+            ret_video, video_frame = video_cap.read()
+            if ret_video:
+                display_frame = video_frame
+            else:
+                display_frame = frame
+    else:
+        video_playing = False
+        stop_alert_audio()
+        display_frame = frame
+
+    cv2.imshow("Gaze Tracker", display_frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 cap.release()
+video_cap.release()
+stop_alert_audio()
 cv2.destroyAllWindows()
