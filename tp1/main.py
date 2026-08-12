@@ -31,10 +31,13 @@ MIN_HORIZONTAL_RATIO = 0.35
 MAX_HORIZONTAL_RATIO = 0.65
 MIN_VERTICAL_OFFSET = -0.10
 MAX_VERTICAL_OFFSET = 0
+AWAY_FRAMES_TO_TRIGGER = 10
 
 cap = cv2.VideoCapture(0)
 
 cv2.namedWindow("Gaze Tracker", cv2.WINDOW_NORMAL)
+
+away_frame_count = 0
 
 
 def start_alert_audio():
@@ -88,7 +91,8 @@ while cap.isOpened():
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = face_mesh.process(rgb)
 
-    looking_away = True
+    looking_away = False
+    gaze_unstable = False
 
     if results.multi_face_landmarks:
         lm = results.multi_face_landmarks[0].landmark
@@ -129,10 +133,22 @@ while cap.isOpened():
                 and MIN_VERTICAL_OFFSET < right_y_offset < MAX_VERTICAL_OFFSET
             )
 
-            if horizontal_ok and vertical_ok:
-                looking_away = False
+            looking_away = not (horizontal_ok and vertical_ok)
+        else:
+            gaze_unstable = True
+    else:
+        gaze_unstable = True
 
-    if looking_away:
+    if gaze_unstable:
+        away_frame_count += 1
+    elif looking_away:
+        away_frame_count += 1
+    else:
+        away_frame_count = 0
+
+    alert_active = away_frame_count >= AWAY_FRAMES_TO_TRIGGER
+
+    if alert_active:
         cv2.putText(frame, "LOOK AT SCREEN", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         if not video_playing:
             video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
