@@ -4,27 +4,54 @@ import numpy as np
 import platform
 from pathlib import Path
 import subprocess
+import time
+import urllib.request
 
 video_path = Path(__file__).with_name("alert.mp4")
 audio_path = Path(__file__).with_name("alert.wav")
+task_path = Path(__file__).with_name("face_landmarker.task")
 video_cap = cv2.VideoCapture(str(video_path))
 video_playing = False
 audio_process = None
 
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True, max_num_faces=1)
+if not task_path.exists():
+    print(f"Downloading face_landmarker.task to {task_path}...")
+    url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+    urllib.request.urlretrieve(url, task_path)
+    print("Download complete.")
+
+use_tasks_api = False
+if hasattr(mp, "solutions") and hasattr(mp.solutions, "face_mesh"):
+    mp_face_mesh = mp.solutions.face_mesh
+    face_mesh = mp_face_mesh.FaceMesh(refine_landmarks=True, max_num_faces=1)
+else:
+    use_tasks_api = True
+    from mediapipe.tasks import python
+    from mediapipe.tasks.python import vision
+
+    base_options = python.BaseOptions(model_asset_path=str(task_path))
+    options = vision.FaceLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.VIDEO,
+        output_face_blendshapes=False,
+        output_facial_transformation_matrixes=False,
+        num_faces=1
+    )
+    detector = vision.FaceLandmarker.create_from_options(options)
 
 LEFT_IRIS = 468
 LEFT_IRIS_TOP = 470
 LEFT_CORNERS = (33, 133)
 LEFT_TOP = (160, 158)
 LEFT_BOTTOM = (144, 153)
+LEFT_EYE_CONTOUR = [33, 160, 158, 133, 153, 144]
 
 RIGHT_IRIS = 473
 RIGHT_IRIS_TOP = 475
 RIGHT_CORNERS = (362, 263)
 RIGHT_TOP = (386, 385)
 RIGHT_BOTTOM = (373, 380)
+RIGHT_EYE_CONTOUR = [362, 385, 386, 263, 380, 373]
 
 MIN_EYE_ASPECT_RATIO = 0.15
 MIN_HORIZONTAL_RATIO = 0.35
@@ -82,6 +109,7 @@ def stop_alert_audio():
             audio_process.kill()
     audio_process = None
 
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
@@ -89,13 +117,24 @@ while cap.isOpened():
 
     h, w, _ = frame.shape
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = face_mesh.process(rgb)
+
+    landmarks = None
+    if not use_tasks_api:
+        results = face_mesh.process(rgb)
+        if results.multi_face_landmarks:
+            landmarks = results.multi_face_landmarks[0].landmark
+    else:
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        timestamp_ms = int(time.time() * 1000)
+        detection_result = detector.detect_for_video(mp_image, timestamp_ms)
+        if detection_result.face_landmarks:
+            landmarks = detection_result.face_landmarks[0]
 
     looking_away = False
     gaze_unstable = False
 
-    if results.multi_face_landmarks:
-        lm = results.multi_face_landmarks[0].landmark
+    if landmarks:
+        lm = landmarks
 
         def pt(i):
             return np.array([lm[i].x * w, lm[i].y * h])
@@ -110,8 +149,8 @@ while cap.isOpened():
         right_width = np.linalg.norm(pt(RIGHT_CORNERS[1]) - pt(RIGHT_CORNERS[0]))
         right_height = np.linalg.norm(right_bottom - right_top)
 
-        left_ear = left_height / left_width
-        right_ear = right_height / right_width
+        left_ear = left_height / left_width if left_width > 0 else 0
+        right_ear = right_height / right_width if right_width > 0 else 0
         avg_ear = (left_ear + right_ear) / 2
 
         if avg_ear > MIN_EYE_ASPECT_RATIO:
@@ -136,6 +175,27 @@ while cap.isOpened():
             looking_away = not (horizontal_ok and vertical_ok)
         else:
             gaze_unstable = True
+
+        # --- DIBUJADO ÚNICO DE LANDMARKS ---
+        landmark_color = (0, 0, 255) if looking_away or gaze_unstable else (0, 255, 0)
+
+        # Contorno de ojos
+        left_pts = np.array([pt(i) for i in LEFT_EYE_CONTOUR], dtype=np.int32)
+        right_pts = np.array([pt(i) for i in RIGHT_EYE_CONTOUR], dtype=np.int32)
+        cv2.polylines(frame, [left_pts], True, (255, 255, 255), 1)
+        cv2.polylines(frame, [right_pts], True, (255, 255, 255), 1)
+
+        # Centro del iris y círculos
+        left_iris_p = pt(LEFT_IRIS)
+        right_iris_p = pt(RIGHT_IRIS)
+        left_r = max(2, int(left_width * 0.15))
+        right_r = max(2, int(right_width * 0.15))
+
+        cv2.circle(frame, (int(left_iris_p[0]), int(left_iris_p[1])), 2, (0, 255, 255), -1)
+        cv2.circle(frame, (int(left_iris_p[0]), int(left_iris_p[1])), left_r, landmark_color, 1)
+
+        cv2.circle(frame, (int(right_iris_p[0]), int(right_iris_p[1])), 2, (0, 255, 255), -1)
+        cv2.circle(frame, (int(right_iris_p[0]), int(right_iris_p[1])), right_r, landmark_color, 1)
     else:
         gaze_unstable = True
 
