@@ -32,6 +32,18 @@ MAX_HORIZONTAL_RATIO = 0.65
 MIN_VERTICAL_OFFSET = -0.10
 MAX_VERTICAL_OFFSET = 0
 AWAY_FRAMES_TO_TRIGGER = 10
+LANDMARK_POINTS = (
+    LEFT_IRIS,
+    LEFT_IRIS_TOP,
+    *LEFT_CORNERS,
+    *LEFT_TOP,
+    *LEFT_BOTTOM,
+    RIGHT_IRIS,
+    RIGHT_IRIS_TOP,
+    *RIGHT_CORNERS,
+    *RIGHT_TOP,
+    *RIGHT_BOTTOM,
+)
 
 cap = cv2.VideoCapture(0)
 
@@ -99,6 +111,9 @@ while cap.isOpened():
 
         def pt(i):
             return np.array([lm[i].x * w, lm[i].y * h])
+
+        for landmark_index in LANDMARK_POINTS:
+            cv2.circle(frame, pt(landmark_index).astype(int), 2, (0, 255, 0), -1)
 
         left_top = (pt(LEFT_TOP[0]) + pt(LEFT_TOP[1])) / 2
         left_bottom = (pt(LEFT_BOTTOM[0]) + pt(LEFT_BOTTOM[1])) / 2
