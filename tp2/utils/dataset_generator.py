@@ -4,8 +4,10 @@ import glob
 import numpy
 import math
 
+from utils.label_converters import label_to_int
+
 def generate_hu_moments_file():
-    with open('generated-files/shapes-hu-moments.csv', 'w',
+    with open('dataset/tetris-hu-moments.csv', 'w',
               newline='') as file:  # Se genera un archivo nuevo (W=Write)
         writer = csv.writer(file)
         # Ahora escribo los momentos de Hu de cada uno de las figuras. 
@@ -24,12 +26,12 @@ def write_hu_moments(label, writer):
         hu_moments.append(hu_moments_of_file(file))
     for mom in hu_moments:
         flattened = mom.ravel()  # paso de un array de arrays a un array simple.
-        row = numpy.append(flattened, label)  # le metes el flattened array y le agregas el label
+        row = numpy.append(flattened, label_to_int(label))  # le metes el flattened array y le agregas el label
         writer.writerow(row)  # Escribe una linea en el archivo.
 
 def hu_moments_of_file(filename):
     image = cv2.imread(filename)
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     bin = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 67, 2)
 
     # Invert the image so the area of the UAV is filled with 1's. This is necessary since
@@ -45,15 +47,16 @@ def hu_moments_of_file(filename):
     shape_contour = max(contours, key=cv2.contourArea)  # Agarra el contorno de area maxima
 
     # Descomentar para chequear que estemos agarrando bien el contorno
-    # cv2.drawContours(image, [shape_contour], -1, (0, 255, 0), 2)
-    # cv2.imshow("test", image)
-    # cv2.waitKey(0)
+    cv2.drawContours(image, [shape_contour], -1, (0, 255, 0), 2)
+    cv2.imshow("test", image)
+    cv2.waitKey(0)
 
     # Calculate Moments
     moments = cv2.moments(shape_contour)  # momentos de inercia
     # Calculate Hu Moments
-    huMoments = cv2.HuMoments(moments)  # momentos de Hu
+    huMoments = cv2.HuMoments(moments).flatten()  # momentos de Hu, a 1D para operar por escalar
     # Log scale hu moments
     for i in range(0, 7):
-        huMoments[i] = -1 * math.copysign(1.0, huMoments[i]) * math.log10(abs(huMoments[i])) # Mapeo para agrandar la escala.
+        value = float(huMoments[i])
+        huMoments[i] = -1 * math.copysign(1.0, value) * math.log10(abs(value))  # Mapeo para agrandar la escala.
     return huMoments

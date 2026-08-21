@@ -1,0 +1,3 @@
+from utils.dataset_generator import generate_hu_moments_file
+
+generate_hu_moments_file()
