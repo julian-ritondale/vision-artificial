@@ -220,3 +220,5 @@ __marimo__/
 # MediaPipe
 models/
 .task
+
+.DS_Store
