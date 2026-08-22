@@ -49,6 +49,7 @@ def hu_moments_of_file(filename):
     # Descomentar para chequear que estemos agarrando bien el contorno
     cv2.drawContours(image, [shape_contour], -1, (0, 255, 0), 2)
     cv2.imshow("test", image)
+    cv2.imshow("test GRAY", gray)
     cv2.waitKey(0)
 
     # Calculate Moments
@@ -58,5 +59,9 @@ def hu_moments_of_file(filename):
     # Log scale hu moments
     for i in range(0, 7):
         value = float(huMoments[i])
-        huMoments[i] = -1 * math.copysign(1.0, value) * math.log10(abs(value))  # Mapeo para agrandar la escala.
+        magnitude = abs(value)
+        if magnitude == 0.0:
+            huMoments[i] = 0.0
+        else:
+            huMoments[i] = -1 * math.copysign(1.0, value) * math.log10(magnitude)  # Mapeo para agrandar la escala.
     return huMoments
