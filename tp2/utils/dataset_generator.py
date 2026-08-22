@@ -42,12 +42,13 @@ def hu_moments_of_file(filename):
     # buscamos eliminar falsos positivos (puntos blancos en el fondo) para eliminar ruido.
     bin = cv2.morphologyEx(bin, cv2.MORPH_ERODE, kernel)
 
-    contours, hierarchy = cv2.findContours(bin, cv2.RETR_LIST,
-                                           cv2.CHAIN_APPROX_SIMPLE)  # encuetra los contornos
+    contours, _ = cv2.findContours(bin, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)  # encuetra los contornos
     shape_contour = max(contours, key=cv2.contourArea)  # Agarra el contorno de area maxima
 
     # Descomentar para chequear que estemos agarrando bien el contorno
     # cv2.drawContours(image, [shape_contour], -1, (0, 255, 0), 2)
+    # cv2.namedWindow("test", cv2.WINDOW_NORMAL)
+    # cv2.namedWindow("test GRAY", cv2.WINDOW_NORMAL)
     # cv2.imshow("test", image)
     # cv2.imshow("test GRAY", gray)
     # cv2.waitKey(0)
