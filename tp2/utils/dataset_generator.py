@@ -4,7 +4,10 @@ import glob
 import numpy
 import math
 
-from utils.label_converters import label_to_int
+try:
+    from utils.label_converters import label_to_int
+except ModuleNotFoundError:
+    from label_converters import label_to_int
 
 def generate_hu_moments_file():
     with open('dataset/tetris-hu-moments.csv', 'w',
@@ -46,12 +49,12 @@ def hu_moments_of_file(filename):
     shape_contour = max(contours, key=cv2.contourArea)  # Agarra el contorno de area maxima
 
     # Descomentar para chequear que estemos agarrando bien el contorno
-    # cv2.drawContours(image, [shape_contour], -1, (0, 255, 0), 2)
-    # cv2.namedWindow("test", cv2.WINDOW_NORMAL)
-    # cv2.namedWindow("test GRAY", cv2.WINDOW_NORMAL)
-    # cv2.imshow("test", image)
-    # cv2.imshow("test GRAY", gray)
-    # cv2.waitKey(0)
+    cv2.drawContours(image, [shape_contour], -1, (0, 255, 0), 2)
+    cv2.namedWindow("test", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("test GRAY", cv2.WINDOW_NORMAL)
+    cv2.imshow("test", image)
+    cv2.imshow("test GRAY", gray)
+    cv2.waitKey(0)
 
     # Calculate Moments
     moments = cv2.moments(shape_contour)  # momentos de inercia
