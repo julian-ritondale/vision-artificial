@@ -48,22 +48,27 @@ def run_camera_demo(model_path="model/decision_tree_model.joblib", camera_index=
 
     window_name = "Tetris Piece Classifier - Live"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, 960, 540)
+    cv2.resizeWindow(window_name, 960, 600)
 
     # Trackbars for real-time adjustments
     def nothing(x):
         pass
 
-    cv2.createTrackbar("Block Size", window_name, 33, 100, nothing)     # Adaptive threshold block size (odd > 1)
-    cv2.createTrackbar("C Constant", window_name, 2, 50, nothing)        # Adaptive threshold C
-    cv2.createTrackbar("Min Area", window_name, 2000, 50000, nothing)    # Minimum contour area
-    cv2.createTrackbar("Max Area", window_name, 150000, 300000, nothing) # Maximum contour area
-    cv2.createTrackbar("Invert", window_name, 1, 1, nothing)             # 1 = piece is darker than background
+    cv2.createTrackbar("Block Size", window_name, 45, 100, nothing)      # Adaptive threshold block size (odd > 1)
+    cv2.createTrackbar("C Constant", window_name, 10, 50, nothing)       # Adaptive threshold C (higher = cleaner white)
+    cv2.createTrackbar("Min Area", window_name, 2500, 50000, nothing)    # Minimum contour area (filters noise)
+    cv2.createTrackbar("Max Area", window_name, 120000, 300000, nothing) # Maximum contour area
+    cv2.createTrackbar("Invert", window_name, 1, 1, nothing)             # 1 = piece is dark on light background
+    cv2.createTrackbar("Use ROI Box", window_name, 1, 1, nothing)        # 1 = only detect inside center box
+    cv2.createTrackbar("Largest Only", window_name, 1, 1, nothing)       # 1 = only classify the largest shape
 
-    print("\n--- CONTROLS ---")
-    print(" Press 'q' or 'ESC' to exit")
-    print(" Adjust trackbars to tune contour detection")
-    print("----------------\n")
+    print("\n--- CONTROLS & TIPS ---")
+    print(" 1. Colocá la pieza dentro del cuadro verde central.")
+    print(" 2. Si hay ruido o detecta el fondo, subí 'C Constant' o 'Min Area'.")
+    print(" 3. Si la pieza es oscura sobre papel blanco: 'Invert' = 1.")
+    print(" 4. Si la pieza es blanca sobre fondo oscuro: 'Invert' = 0.")
+    print(" 5. Presioná 'q' o 'ESC' para salir.")
+    print("------------------------\n")
 
     colors = {
         "cleveland_z": (0, 0, 255),     # Red
@@ -79,6 +84,8 @@ def run_camera_demo(model_path="model/decision_tree_model.joblib", camera_index=
             print("Failed to grab frame.")
             break
 
+        h_frame, w_frame = frame.shape[:2]
+
         # Read trackbar values
         block_size = cv2.getTrackbarPos("Block Size", window_name)
         if block_size % 2 == 0:
@@ -90,9 +97,23 @@ def run_camera_demo(model_path="model/decision_tree_model.joblib", camera_index=
         min_area = cv2.getTrackbarPos("Min Area", window_name)
         max_area = cv2.getTrackbarPos("Max Area", window_name)
         invert = cv2.getTrackbarPos("Invert", window_name)
+        use_roi = cv2.getTrackbarPos("Use ROI Box", window_name)
+        largest_only = cv2.getTrackbarPos("Largest Only", window_name)
+
+        # Region of Interest (ROI)
+        if use_roi == 1:
+            box_w, box_h = int(w_frame * 0.6), int(h_frame * 0.65)
+            roi_x1 = (w_frame - box_w) // 2
+            roi_y1 = (h_frame - box_h) // 2
+            roi_x2 = roi_x1 + box_w
+            roi_y2 = roi_y1 + box_h
+            working_frame = frame[roi_y1:roi_y2, roi_x1:roi_x2]
+        else:
+            roi_x1, roi_y1, roi_x2, roi_y2 = 0, 0, w_frame, h_frame
+            working_frame = frame
 
         # Preprocessing
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(working_frame, cv2.COLOR_BGR2GRAY)
         bin_img = cv2.adaptiveThreshold(
             gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block_size, c_val
         )
@@ -107,10 +128,30 @@ def run_camera_demo(model_path="model/decision_tree_model.joblib", camera_index=
         # Find contours
         contours, _ = cv2.findContours(bin_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            if min_area <= area <= max_area:
+        # Filter valid contours by area
+        valid_contours = [
+            cnt for cnt in contours
+            if min_area <= cv2.contourArea(cnt) <= max_area
+        ]
+
+        # Draw ROI Guide Box
+        if use_roi == 1:
+            cv2.rectangle(frame, (roi_x1, roi_y1), (roi_x2, roi_y2), (0, 255, 0), 2)
+            cv2.putText(
+                frame, "Presentar figura aqui", (roi_x1 + 10, roi_y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
+            )
+
+        # Select target contours
+        if valid_contours:
+            if largest_only == 1:
+                target_contours = [max(valid_contours, key=cv2.contourArea)]
+            else:
+                target_contours = valid_contours
+
+            for cnt in target_contours:
                 try:
+                    area = cv2.contourArea(cnt)
                     hu_moments = compute_hu_moments(cnt)
                     sample = np.array([hu_moments], dtype=np.float64)
                     
@@ -119,18 +160,22 @@ def run_camera_demo(model_path="model/decision_tree_model.joblib", camera_index=
                     label = int_to_label(int(pred_class))
                     color = colors.get(label, (0, 255, 0))
 
+                    # Offset contour coordinates to match the full frame
+                    cnt_offset = cnt.copy()
+                    cnt_offset[:, :, 0] += roi_x1
+                    cnt_offset[:, :, 1] += roi_y1
+
                     # Bounding rectangle and label drawing
-                    x, y, w, h = cv2.boundingRect(cnt)
-                    cv2.drawContours(frame, [cnt], -1, color, 3)
+                    x, y, w, h = cv2.boundingRect(cnt_offset)
+                    cv2.drawContours(frame, [cnt_offset], -1, color, 3)
                     
                     # Draw label background
-                    label_text = f"{label} ({int(area)})"
+                    label_text = f"{label.upper()} (Area: {int(area)})"
                     (text_w, text_h), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                    cv2.rectangle(frame, (x, y - text_h - 10), (x + text_w + 6, y), color, -1)
-                    cv2.putText(frame, label_text, (x + 3, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
+                    cv2.rectangle(frame, (x, y - text_h - 12), (x + text_w + 10, y), color, -1)
+                    cv2.putText(frame, label_text, (x + 5, y - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
 
                 except Exception:
-                    # Ignore ill-conditioned moments or out-of-range shapes
                     pass
 
         cv2.imshow(window_name, frame)
