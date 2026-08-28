@@ -221,3 +221,8 @@ __marimo__/
 *.task
 
 .DS_Store
+
+# Reference repos
+visionArtificial/
+tp2/visionArtificial/
+*visionArtificial*
