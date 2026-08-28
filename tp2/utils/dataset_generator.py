@@ -4,7 +4,10 @@ import glob
 import numpy
 import math
 
-from utils.label_converters import label_to_int
+try:
+    from utils.label_converters import label_to_int
+except ModuleNotFoundError:
+    from label_converters import label_to_int
 
 def generate_hu_moments_file():
     with open('dataset/tetris-hu-moments.csv', 'w',
