@@ -10,7 +10,8 @@ def train_decision_tree(csv_path: str, model_output_path: str, plot_output_path:
     Plots the tree and saves the trained model to a file.
     """
     print(f"Loading data from {csv_path}...")
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, header=None)
+    df.columns = [f"hu{i+1}" for i in range(df.shape[1]-1)] + ["label"]
     
     # The last column is the target label
     X = df.iloc[:, :-1]
