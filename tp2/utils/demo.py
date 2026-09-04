@@ -7,19 +7,32 @@ import numpy as np
 import warnings
 
 try:
-    from utils.label_converters import int_to_label
+    from tp2.utils.label_converters import int_to_label
+    from tp2.utils.trackbar import create_trackbar, get_trackbar_value
+    from tp2.utils.frame_editor import apply_color_convertion, threshold, denoise, draw_contours
+    from tp2.utils.contour import get_contours, filter_contours_by_area, get_bounding_rect
 except ModuleNotFoundError:
-    from label_converters import int_to_label
+    try:
+        from utils.label_converters import int_to_label
+        from utils.trackbar import create_trackbar, get_trackbar_value
+        from utils.frame_editor import apply_color_convertion, threshold, denoise, draw_contours
+        from utils.contour import get_contours, filter_contours_by_area, get_bounding_rect
+    except ModuleNotFoundError:
+        from label_converters import int_to_label
+        from trackbar import create_trackbar, get_trackbar_value
+        from frame_editor import apply_color_convertion, threshold, denoise, draw_contours
+        from contour import get_contours, filter_contours_by_area, get_bounding_rect
 
 warnings.filterwarnings("ignore")
+
 
 def compute_hu_moments(contour):
     """
     Computes log-scaled Hu moments for a given contour,
-    matching the preprocessing in dataset_generator.py.
+    matching the preprocessing in dataset_generator.py and Fabri's repo.
     """
-    moments = cv2.moments(contour)
-    hu_moments = cv2.HuMoments(moments).flatten()
+    mom = cv2.moments(contour)
+    hu_moments = cv2.HuMoments(mom).flatten()
     for i in range(7):
         val = float(hu_moments[i])
         mag = abs(val)
@@ -29,8 +42,9 @@ def compute_hu_moments(contour):
             hu_moments[i] = -1.0 * math.copysign(1.0, val) * math.log10(mag)
     return hu_moments
 
+
 def run_camera_demo(model_path="models/decision_tree_model.joblib", camera_index=0):
-    # Support running from either root or tp2/ folder, and models/ or model/ folder
+    # Support running from either root or tp2/ folder
     possible_paths = [
         model_path,
         os.path.join("tp2", model_path),
@@ -56,36 +70,47 @@ def run_camera_demo(model_path="models/decision_tree_model.joblib", camera_index
         print(f"Error: Could not open camera with index {camera_index}.")
         return
 
-    window_name = "Tetris Piece Classifier - Live"
+    window_name = "Window"
+    debug_window_name = "Window debug"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, 960, 600)
+    cv2.namedWindow(debug_window_name, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(window_name, 800, 600)
+    cv2.resizeWindow(debug_window_name, 600, 450)
 
-    # Trackbars for real-time adjustments
-    def nothing(x):
-        pass
+    # Trackbars (replicated from Fabri's thresholder & camera design)
+    trackbar_thresh_name = "Threshold"
+    create_trackbar(trackbar_thresh_name, window_name, slider_max=255, initial_val=127)
 
-    cv2.createTrackbar("Block Size", window_name, 45, 100, nothing)      # Adaptive threshold block size (odd > 1)
-    cv2.createTrackbar("C Constant", window_name, 10, 50, nothing)       # Adaptive threshold C (higher = cleaner white)
-    cv2.createTrackbar("Min Area", window_name, 2500, 50000, nothing)    # Minimum contour area (filters noise)
-    cv2.createTrackbar("Max Area", window_name, 120000, 300000, nothing) # Maximum contour area
-    cv2.createTrackbar("Invert", window_name, 1, 1, nothing)             # 1 = piece is dark on light background
-    cv2.createTrackbar("Use ROI Box", window_name, 1, 1, nothing)        # 1 = only detect inside center box
-    cv2.createTrackbar("Largest Only", window_name, 1, 1, nothing)       # 1 = only classify the largest shape
+    trackbar_kernel_name = "Kernel denoise"
+    create_trackbar(trackbar_kernel_name, window_name, slider_max=15, initial_val=5)
 
-    print("\n--- CONTROLS & TIPS ---")
-    print(" 1. Colocá la pieza dentro del cuadro verde central.")
-    print(" 2. Si hay ruido o detecta el fondo, subí 'C Constant' o 'Min Area'.")
-    print(" 3. Si la pieza es oscura sobre papel blanco: 'Invert' = 1.")
-    print(" 4. Si la pieza es blanca sobre fondo oscuro: 'Invert' = 0.")
-    print(" 5. Presioná 'q' o 'ESC' para salir.")
-    print("------------------------\n")
+    trackbar_min_area_name = "Min Area"
+    create_trackbar(trackbar_min_area_name, window_name, slider_max=30000, initial_val=2500)
+
+    trackbar_max_area_name = "Max Area"
+    create_trackbar(trackbar_max_area_name, window_name, slider_max=200000, initial_val=120000)
+
+    trackbar_invert_name = "Invert (Dark Piece)"
+    create_trackbar(trackbar_invert_name, window_name, slider_max=1, initial_val=1)
+
+    trackbar_largest_name = "Largest Only"
+    create_trackbar(trackbar_largest_name, window_name, slider_max=1, initial_val=0)
+
+    print("\n--- FABRI-STYLE THRESHOLDER CONTROLS ---")
+    print(" 1. 'Threshold': Ajusta el umbral global de binarización.")
+    print(" 2. 'Kernel denoise': Tamaño del elemento estructurante para apertura/clausura morfológica.")
+    print(" 3. 'Invert': 1 si la pieza es oscura en fondo claro (papel blanco), 0 si es clara en fondo oscuro.")
+    print(" 4. 'Min Area' / 'Max Area': Filtro de ruido y tamaño de contorno.")
+    print(" 5. 'Largest Only': 1 para clasificar solo la figura más grande, 0 para todas las válidas.")
+    print(" 6. Tecla 'q' o ESC para salir.")
+    print("-----------------------------------------\n")
 
     colors = {
         "cleveland_z": (0, 0, 255),     # Red
         "orange_ricky": (0, 165, 255),  # Orange
         "hero": (255, 255, 0),          # Cyan / Light Blue
         "smashboy": (0, 255, 255),      # Yellow
-        "teewee": (255, 0, 255)         # Purple / Magenta
+        "teewee": (255, 0, 255)         # Magenta
     }
 
     while True:
@@ -94,102 +119,68 @@ def run_camera_demo(model_path="models/decision_tree_model.joblib", camera_index
             print("Failed to grab frame.")
             break
 
-        h_frame, w_frame = frame.shape[:2]
+        # Color conversion
+        gray_frame = apply_color_convertion(frame=frame, color=cv2.COLOR_BGR2GRAY)
 
         # Read trackbar values
-        block_size = cv2.getTrackbarPos("Block Size", window_name)
-        if block_size % 2 == 0:
-            block_size += 1
-        if block_size < 3:
-            block_size = 3
+        trackbar_thresh_val = get_trackbar_value(trackbar_thresh_name, window_name)
+        trackbar_kernel_val = get_trackbar_value(trackbar_kernel_name, window_name)
+        trackbar_min_area_val = get_trackbar_value(trackbar_min_area_name, window_name)
+        trackbar_max_area_val = get_trackbar_value(trackbar_max_area_name, window_name)
+        trackbar_invert_val = get_trackbar_value(trackbar_invert_name, window_name)
+        trackbar_largest_val = get_trackbar_value(trackbar_largest_name, window_name)
 
-        c_val = cv2.getTrackbarPos("C Constant", window_name)
-        min_area = cv2.getTrackbarPos("Min Area", window_name)
-        max_area = cv2.getTrackbarPos("Max Area", window_name)
-        invert = cv2.getTrackbarPos("Invert", window_name)
-        use_roi = cv2.getTrackbarPos("Use ROI Box", window_name)
-        largest_only = cv2.getTrackbarPos("Largest Only", window_name)
-
-        # Region of Interest (ROI)
-        if use_roi == 1:
-            box_w, box_h = int(w_frame * 0.6), int(h_frame * 0.65)
-            roi_x1 = (w_frame - box_w) // 2
-            roi_y1 = (h_frame - box_h) // 2
-            roi_x2 = roi_x1 + box_w
-            roi_y2 = roi_y1 + box_h
-            working_frame = frame[roi_y1:roi_y2, roi_x1:roi_x2]
-        else:
-            roi_x1, roi_y1, roi_x2, roi_y2 = 0, 0, w_frame, h_frame
-            working_frame = frame
-
-        # Preprocessing
-        gray = cv2.cvtColor(working_frame, cv2.COLOR_BGR2GRAY)
-        bin_img = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block_size, c_val
+        # Thresholding (global threshold with invert support)
+        binary_type = cv2.THRESH_BINARY_INV if trackbar_invert_val == 1 else cv2.THRESH_BINARY
+        thresh_frame = threshold(
+            frame=gray_frame,
+            slider_max=255,
+            binary=binary_type,
+            trackbar_value=trackbar_thresh_val
         )
 
-        if invert == 1:
-            bin_img = 255 - bin_img
+        # Denoising (morphological open & close with ellipse)
+        frame_denoised = denoise(frame=thresh_frame, method=cv2.MORPH_ELLIPSE, radius=trackbar_kernel_val)
 
-        # Denoising
-        kernel = np.ones((3, 3), np.uint8)
-        bin_clean = cv2.morphologyEx(bin_img, cv2.MORPH_OPEN, kernel)
+        # Contours extraction & area filtering
+        contours = get_contours(frame=frame_denoised, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
+        filtered_contours = filter_contours_by_area(
+            contours=contours,
+            min_area=trackbar_min_area_val,
+            max_area=trackbar_max_area_val
+        )
 
-        # Find contours
-        contours, _ = cv2.findContours(bin_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # Filter valid contours by area
-        valid_contours = [
-            cnt for cnt in contours
-            if min_area <= cv2.contourArea(cnt) <= max_area
-        ]
-
-        # Draw ROI Guide Box
-        if use_roi == 1:
-            cv2.rectangle(frame, (roi_x1, roi_y1), (roi_x2, roi_y2), (0, 255, 0), 2)
-            cv2.putText(
-                frame, "Presentar figura aqui", (roi_x1 + 10, roi_y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2
-            )
-
-        # Select target contours
-        if valid_contours:
-            if largest_only == 1:
-                target_contours = [max(valid_contours, key=cv2.contourArea)]
+        # Prediction and drawing
+        if filtered_contours:
+            if trackbar_largest_val == 1:
+                target_contours = [max(filtered_contours, key=cv2.contourArea)]
             else:
-                target_contours = valid_contours
+                target_contours = filtered_contours
 
-            for cnt in target_contours:
+            for cont in target_contours:
                 try:
-                    area = cv2.contourArea(cnt)
-                    hu_moments = compute_hu_moments(cnt)
+                    area = cv2.contourArea(cont)
+                    hu_moments = compute_hu_moments(cont)
                     sample = np.array([hu_moments], dtype=np.float64)
-                    
-                    # Predict class
-                    pred_class = model.predict(sample)[0]
-                    label = int_to_label(int(pred_class))
+
+                    pred = model.predict(sample)[0]
+                    label = int_to_label(int(pred))
                     color = colors.get(label, (0, 255, 0))
 
-                    # Offset contour coordinates to match the full frame
-                    cnt_offset = cnt.copy()
-                    cnt_offset[:, :, 0] += roi_x1
-                    cnt_offset[:, :, 1] += roi_y1
+                    # Draw contour
+                    draw_contours(frame=frame, contours=[cont], color=color, thickness=3)
 
-                    # Bounding rectangle and label drawing
-                    x, y, w, h = cv2.boundingRect(cnt_offset)
-                    cv2.drawContours(frame, [cnt_offset], -1, color, 3)
-                    
-                    # Draw label background
-                    label_text = f"{label.upper()} (Area: {int(area)})"
-                    (text_w, text_h), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                    cv2.rectangle(frame, (x, y - text_h - 12), (x + text_w + 10, y), color, -1)
-                    cv2.putText(frame, label_text, (x + 5, y - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
-
+                    # Bounding rect and text
+                    x, y, w, h = get_bounding_rect(cont)
+                    label_text = f"{label.upper()} ({int(area)})"
+                    (text_w, text_h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                    cv2.rectangle(frame, (x, max(0, y - text_h - 10)), (x + text_w + 6, max(text_h + 10, y)), color, -1)
+                    cv2.putText(frame, label_text, (x + 3, max(0, y - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
                 except Exception:
                     pass
 
         cv2.imshow(window_name, frame)
-        cv2.imshow("Binary Mask (Debug)", bin_clean)
+        cv2.imshow(debug_window_name, frame_denoised)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q') or key == 27:
@@ -197,6 +188,7 @@ def run_camera_demo(model_path="models/decision_tree_model.joblib", camera_index
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     run_camera_demo()
