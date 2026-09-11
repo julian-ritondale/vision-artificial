@@ -9,7 +9,6 @@ class CameraCapture:
         self._cap = cv2.VideoCapture(source)
         if not self._cap.isOpened():
             raise RuntimeError(f"Cannot open video source: {source!r}")
-
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.FRAME_WIDTH)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
 
