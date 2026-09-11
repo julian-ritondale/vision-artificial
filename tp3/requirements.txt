@@ -1,6 +1,2 @@
 numpy
-opencv-python
-scikit-learn
-matplotlib
-joblib
-pandas
+opencv-contrib-python
