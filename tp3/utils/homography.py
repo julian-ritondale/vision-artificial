@@ -10,6 +10,7 @@ class HomographyManager:
         self._H: np.ndarray | None = None
         self._H_inv: np.ndarray | None = None
         self.metric_bounds: tuple[float, float, float, float] | None = None
+        self.zenithal_background: np.ndarray | None = None
 
     def compute_homography(
         self,
@@ -32,6 +33,16 @@ class HomographyManager:
         xs, ys = metric_points[:, 0], metric_points[:, 1]
         self.metric_bounds = (float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()))
         return H
+
+    def capture_zenithal_background(
+        self,
+        frame: np.ndarray,
+        output_size: tuple[int, int] = config.W2D_SIZE,
+    ) -> np.ndarray:
+        half_extent = config.W2D_HALF_EXTENT_MM
+        bounds = (-half_extent, -half_extent, half_extent, half_extent)
+        self.zenithal_background = self.warp_to_zenithal(frame, output_size, bounds)
+        return self.zenithal_background.copy()
 
     def pixel_to_metric(self, pixel_pts: np.ndarray) -> np.ndarray:
         self._require_H()
@@ -115,6 +126,7 @@ class HomographyManager:
         self._H = None
         self._H_inv = None
         self.metric_bounds = None
+        self.zenithal_background = None
         for attr in ("_last_pip_scale", "_last_pip_offset"):
             if hasattr(self, attr):
                 delattr(self, attr)

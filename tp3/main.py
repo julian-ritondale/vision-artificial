@@ -24,8 +24,10 @@ def main() -> None:
     )
     localization_mode = LocalizationMode(detector, homography, renderer)
 
-    window_name = "Homography Localization"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    cam_window = "Cam"
+    w2d_window = "W2D"
+    cv2.namedWindow(cam_window, cv2.WINDOW_NORMAL)
+    cv2.namedWindow(w2d_window, cv2.WINDOW_NORMAL)
 
     print("Homography Localization  |  R = Register  Z = Reset  Q = Quit")
 
@@ -36,11 +38,13 @@ def main() -> None:
                 break
 
             if not homography.is_ready:
-                display = registration_mode.process_frame(frame)
+                cam_display = registration_mode.process_frame(frame)
             else:
-                display = localization_mode.process_frame(frame)
+                cam_display, w2d_display = localization_mode.process_frame(frame)
+                if w2d_display is not None:
+                    cv2.imshow(w2d_window, w2d_display)
 
-            cv2.imshow(window_name, display)
+            cv2.imshow(cam_window, cam_display)
             key = cv2.waitKey(1) & 0xFF
 
             if key == config.KEY_QUIT:
@@ -51,7 +55,7 @@ def main() -> None:
             elif key == config.KEY_RESET:
                 homography.reset()
 
-            if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+            if cv2.getWindowProperty(cam_window, cv2.WND_PROP_VISIBLE) < 1:
                 break
 
     finally:
@@ -61,4 +65,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -4,12 +4,15 @@ ARUCO_DICT_ID: int = cv2.aruco.DICT_4X4_50
 
 MARKER_SIDE_MM: float = 100.0
 
-MIN_REF_MARKERS: int = 4
+MIN_REF_MARKERS: int = 1
 
 CAMERA_SOURCE: int = 0
 
 FRAME_WIDTH: int = 1280
 FRAME_HEIGHT: int = 720
+
+W2D_SIZE: tuple[int, int] = (600, 600)
+W2D_HALF_EXTENT_MM: float = 300.0
 
 PIP_SIZE: tuple[int, int] = (360, 360)
 
@@ -56,4 +59,3 @@ METRIC_POSITIONS: dict[int, tuple[float, float]] = {
     2: (500.0, 500.0),
     3: (  0.0, 500.0),
 }
-
