@@ -1,21 +1,7 @@
-# TP3 – Planar Homography Localization System
+# TP3 - Planar Homography Localization System
 
-Real-time localization of ArUco fiducial markers in a 2-D metric reference
-frame using OpenCV homography.
-
-## File Structure
-
-```
-tp3/
-├── main.py           # Entry point
-├── config.py         # All configuration (camera, ArUco, colours, metric positions)
-├── camera.py         # CameraCapture
-├── detector.py       # ArucoDetector
-├── homography.py     # HomographyManager
-├── registration.py   # RegistrationMode
-├── localization.py   # LocalizationMode
-└── renderer.py       # Renderer
-```
+Real-time localization of ArUco fiducial markers in a 2D metric reference
+frame using a homography from camera image coordinates to world millimeters.
 
 ## Setup
 
@@ -33,62 +19,54 @@ python main.py
 
 | Key | Action |
 |-----|--------|
-| R   | Register – compute homography from visible reference markers |
-| Z   | Reset – discard homography, return to registration mode |
-| Q   | Quit |
+| R | Register the metric plane from one visible ArUco marker |
+| Z | Reset the registration |
+| Q | Quit |
 
 ## Configuration
 
-Everything is set in [`config.py`](config.py). The most common things to change:
+The main settings are in `config.py`:
 
 ```python
-ARUCO_DICT_ID  = cv2.aruco.DICT_4X4_50   # ArUco dictionary
-MARKER_SIDE_MM = 100.0                    # Physical marker side length (mm)
-CAMERA_SOURCE  = 0                        # Webcam index
-
-# Metric positions of reference markers (mm)
-METRIC_POSITIONS = {
-    0: (  0.0,   0.0),
-    1: (500.0,   0.0),
-    2: (500.0, 500.0),
-    3: (  0.0, 500.0),
-}
+ARUCO_DICT_ID = cv2.aruco.DICT_4X4_50
+MARKER_SIDE_MM = 100.0
+CAMERA_SOURCE = 0
 ```
+
+`MARKER_SIDE_MM` must match the real printed side length of the marker used
+for registration.
 
 ## Workflow
 
-### 1 – Registration
+1. Print or display an ArUco marker from dictionary `DICT_4X4_50`.
+2. Set `MARKER_SIDE_MM` to the real marker side length in millimeters.
+3. Put the marker flat on the observed plane.
+4. Keep the camera fixed.
+5. Press `R` while at least one marker is detected.
 
-1. Print ArUco markers with IDs matching those in `config.METRIC_POSITIONS`.
-2. Place them at the exact mm positions defined there
-   (e.g. corners of a 500 × 500 mm square on the floor).
-3. Point the camera so that all 4 markers are visible.
-4. Press **R** to lock the homography.
+The detected marker used during registration defines the world frame:
 
-A green contour indicates a reference marker is detected.
-The status bar shows how many reference markers are found.
+- marker center: `(0, 0)` mm
+- marker right direction: positive `x`
+- marker upward direction: positive `y`
+- marker size: metric scale
 
-### 2 – Localization
+After registration, move one or more ArUco markers on the same plane. The
+system shows each marker's position in millimeters and orientation angle.
 
-Once registered the system switches automatically:
+## Windows
 
-* **Camera frame** – blue square contour on each detected marker; label
-  showing `ID`, metric `x`, `y` (mm), and orientation `θ` (degrees).
-* **Zenithal PIP** (top-right) – bird's-eye view of the metric plane with
-  red X / green Y axes and an orange orientation arrow per marker.
+- `Cam`: live camera image with detected marker contours, IDs, coordinates,
+  and orientation.
+- `W2D`: top-down 2D world view using the frozen background captured during
+  registration. It draws the world axes, marker square contours, pose arrows,
+  coordinates, and orientation labels.
 
-Press **Z** to re-register, **Q** to quit.
-
-## Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| `opencv-python` | ArUco detection, perspective transforms |
-| `numpy` | Array maths |
+The W2D background is captured only during registration; it is not recomputed
+continuously in the camera loop.
 
 ## References
 
-* ArUco detection: https://docs.opencv.org/4.5.0/d5/dae/tutorial_aruco_detection.html
-* Geometric transforms: https://docs.opencv.org/5.0/py_tutorials/py_imgproc/py_geometric_transformations/py_geometric_transformations.html
-* perspectiveTransform: https://docs.opencv.org/5.0/main_modules/core_array.html#perspectivetransform
-
+- https://docs.opencv.org/4.x/d5/dae/tutorial_aruco_detection.html
+- https://docs.opencv.org/5.0/py_tutorials/py_imgproc/py_geometric_transformations/py_geometric_transformations.html
+- https://docs.opencv.org/5.0/main_modules/core_array.html#perspectivetransform
