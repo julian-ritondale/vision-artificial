@@ -33,17 +33,12 @@ class RegistrationMode:
         self._last_ids = ids
 
         for c, mid in zip(corners, ids):
-            is_ref = mid in self._metric_positions
-            color = (
-                config.COLORS["contour_ref"]
-                if is_ref
-                else config.COLORS["contour_default"]
-            )
+            color = config.COLORS["contour_ref"]
             self._renderer.draw_marker_contour(out, c, color, thickness=2)
             self._renderer.draw_marker_label(out, c, mid)
 
-        detected_ref = sum(1 for mid in ids if mid in self._metric_positions)
-        required = len(self._metric_positions)
+        detected_ref = len(ids)
+        required = config.MIN_REF_MARKERS
 
         self._renderer.draw_registration_status(
             out,
@@ -62,16 +57,16 @@ class RegistrationMode:
         self._last_ids = ids
 
         try:
-            pixel_pts, metric_pts = self._collect_reference_corners(corners, ids)
+            pixel_pts, metric_pts, marker_id = self._collect_reference_corners(corners, ids)
         except ValueError as exc:
             print(f"[RegistrationMode] Cannot register: {exc}")
             return False
 
         try:
             self._homography.compute_homography(pixel_pts, metric_pts)
+            self._homography.capture_zenithal_background(frame)
             print(
-                f"[RegistrationMode] Homography computed from "
-                f"{len(pixel_pts)} reference markers."
+                f"[RegistrationMode] Homography computed from marker #{marker_id}."
             )
             return True
         except (ValueError, RuntimeError) as exc:
@@ -82,25 +77,23 @@ class RegistrationMode:
         self,
         corners: list[np.ndarray],
         ids: list[int],
-    ) -> tuple[np.ndarray, np.ndarray]:
-    
-        pixel_list: list[np.ndarray] = []
-        metric_list: list[np.ndarray] = []
+    ) -> tuple[np.ndarray, np.ndarray, int]:
 
-        for c, mid in zip(corners, ids):
-            if mid in self._metric_positions:
-                centroid_px = c[0].mean(axis=0)         
-                metric_xy = np.array(self._metric_positions[mid], dtype=np.float32)
-                pixel_list.append(centroid_px)
-                metric_list.append(metric_xy)
-
-        if len(pixel_list) < config.MIN_REF_MARKERS:
+        if not corners:
             raise ValueError(
                 f"Need {config.MIN_REF_MARKERS} reference markers, "
-                f"found {len(pixel_list)}."
+                "found 0."
             )
 
-        return (
-            np.array(pixel_list, dtype=np.float32),
-            np.array(metric_list, dtype=np.float32),
+        half_side = config.MARKER_SIDE_MM / 2.0
+        metric_corners = np.array(
+            [
+                [-half_side,  half_side],
+                [ half_side,  half_side],
+                [ half_side, -half_side],
+                [-half_side, -half_side],
+            ],
+            dtype=np.float32,
         )
+
+        return corners[0][0].astype(np.float32), metric_corners, ids[0]
