@@ -1,0 +1,9 @@
+names:
+- Person
+- Car
+- Airplane
+- Tank
+nc: 4
+test: /content/military_aero_filtered/test/images
+train: /content/military_aero_filtered/train/images
+val: /content/military_aero_filtered/valid/images
